@@ -183,7 +183,7 @@ class ModelEvaluation(ExecutionDefinition):
             "OMP_NUM_THREADS": str(self.cores_per_worker),
             "KMP_AFFINITY": "granularity=fine,compact,1,0",
             "KMP_BLOCKTIME": "1",
-            "OMP_PROC_BIND": "true",
+            "OMP_PROC_BIND": "false",
             "PYTHONUNBUFFERED": "TRUE",
         }
         if env_vars is None:
