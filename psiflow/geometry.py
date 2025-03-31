@@ -371,6 +371,16 @@ class Geometry:
         else:
             return np.linalg.det(self.cell)
 
+    @property
+    def atomic_masses(self):
+        """
+        Get the atomic masses of the atoms in the geometry.
+
+        Returns:
+            np.ndarray: Array of atomic masses.
+        """
+        return np.array([atomic_masses[n] for n in self.per_atom.numbers])
+
     @classmethod
     def from_data(
         cls,

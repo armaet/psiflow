@@ -239,6 +239,10 @@ def setup_system_template(
         velocities.text = " TEMP "
     else:
         velocities.text = " 300 "
+    if walkers[0].masses is not None:
+        masses = ET.Element("masses", mode="manual")
+        masses.text = str(walkers[0].masses).replace("[", "[ ").replace("]", " ]")
+        initialize.append(masses)
     initialize.append(velocities)
 
     system = ET.Element("system", prefix="walker-INDEX")
