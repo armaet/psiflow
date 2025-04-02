@@ -48,8 +48,9 @@ class Walker:
     hamiltonian: Optional[Hamiltonian]
     state: Union[Geometry, AppFuture, None]
     temperature: Optional[float]
+    vol_constraint: Optional[bool]
     pressure: Optional[float]
-    masses: Union[np.ndarray, float, None] = None
+    masses: Union[np.ndarray, float, None]
     nbeads: int
     timestep: float
     coupling: Optional[Coupling]
@@ -62,6 +63,7 @@ class Walker:
         hamiltonian: Optional[Hamiltonian] = None,
         state: Union[Geometry, AppFuture, None] = None,
         temperature: Optional[float] = 300,
+        vol_constraint: Optional[bool] = None,
         pressure: Optional[float] = None,
         masses: Union[np.ndarray, float, None] = None,
         nbeads: int = 1,
@@ -81,6 +83,11 @@ class Walker:
             self.start = order_parameter.evaluate(self.start)
 
         self.temperature = temperature
+        if vol_constraint is None:
+            vol_constraint = False
+        self.vol_constraint = vol_constraint
+        if self.vol_constraint is True:
+            pressure = 0.0
         self.pressure = pressure
 
         if isinstance(masses, (float, int)):
@@ -116,6 +123,7 @@ class Walker:
                 hamiltonian=self.hamiltonian,
                 state=self.state,
                 temperature=self.temperature,
+                vol_constraint=self.vol_constraint,
                 pressure=self.pressure,
                 masses=self.masses,
                 nbeads=self.nbeads,

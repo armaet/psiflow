@@ -133,6 +133,9 @@ def setup_motion(walker: Walker, fix_com: bool) -> ET.Element:
         tau = ET.Element("tau", units="femtosecond")
         tau.text = "200"
         barostat.append(tau)
+        vol_constraint = ET.Element("vol_constraint")
+        vol_constraint.text = " {} ".format(walker.vol_constraint)
+        barostat.append(vol_constraint)
         barostat.append(thermostat)  # never use thermostat_pimd here!
         dynamics.append(barostat)
     else:
