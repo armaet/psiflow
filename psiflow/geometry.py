@@ -47,7 +47,7 @@ class Geometry:
         per_atom (np.recarray): Record array containing per-atom properties.
         cell (np.ndarray): 3x3 array representing the unit cell vectors.
         order (dict): Dictionary to store custom ordering information.
-        energy (Optional[float]): Total energy of the system.
+        energy (Union[float, str, None]): Total energy of the system.
         stress (Optional[np.ndarray]): Stress tensor of the system.
         delta (Optional[float]): Delta value, if applicable.
         phase (Optional[str]): Phase information, if applicable.
@@ -59,7 +59,7 @@ class Geometry:
     per_atom: np.recarray
     cell: np.ndarray
     order: dict
-    energy: Optional[float]
+    energy: Union[float, str, None]
     stress: Optional[np.ndarray]
     delta: Optional[float]
     phase: Optional[str]
@@ -72,7 +72,7 @@ class Geometry:
         per_atom: np.recarray,
         cell: np.ndarray,
         order: Optional[dict] = None,
-        energy: Optional[float] = None,
+        energy: Union[float, str, None] = None,
         stress: Optional[np.ndarray] = None,
         delta: Optional[float] = None,
         phase: Optional[str] = None,
@@ -102,6 +102,8 @@ class Geometry:
         if order is None:
             order = {}
         self.order = order
+        if isinstance(energy, str):
+            energy = None
         self.energy = energy
         self.stress = stress
         self.delta = delta
