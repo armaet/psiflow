@@ -183,7 +183,7 @@ class ModelEvaluation(ExecutionDefinition):
             "OMP_NUM_THREADS": str(self.cores_per_worker),
             "KMP_AFFINITY": "granularity=fine,compact,1,0",
             "KMP_BLOCKTIME": "1",
-            "OMP_PROC_BIND": "false",
+            "OMP_PROC_BIND": "true",
             "PYTHONUNBUFFERED": "TRUE",
         }
         if env_vars is None:
@@ -552,7 +552,7 @@ class ExecutionContext:
         context = ExecutionContext(config, definitions, path / "context_dir")
 
         if make_symlinks:
-            src, dest = Path.cwd() / "psiflow_log", path / "parsl.log"
+            src, dest = Path.cwd() / "psiflow.log", path / "parsl.log"
             _create_symlink(src, dest)
             src, dest = (
                 Path.cwd() / "psiflow_submit_scripts",

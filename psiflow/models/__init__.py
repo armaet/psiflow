@@ -29,7 +29,6 @@ def load_model(path: Union[Path, str]) -> Model:
         config = yaml.load(f, Loader=yaml.FullLoader)
     atomic_energies = {}
     for key in list(config):
-        print(key)
         if key.startswith("atomic_energies_"):
             element = key.split("atomic_energies_")[-1]
             assert element in chemical_symbols
