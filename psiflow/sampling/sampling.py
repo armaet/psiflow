@@ -145,7 +145,7 @@ def setup_motion(walker: Walker, fix_com: bool) -> ET.Element:
     timestep_element.text = str(walker.timestep)
 
     tau = ET.Element("tau", units="femtosecond")
-    tau.text = "100"
+    tau.text = " {} ".format(walker.timecons_thermo)
     thermostat_pimd = ET.Element("thermostat", mode="pile_g")
     thermostat_pimd.append(tau)
     thermostat = ET.Element("thermostat", mode="langevin")
@@ -171,7 +171,7 @@ def setup_motion(walker: Walker, fix_com: bool) -> ET.Element:
         mode = "flexible"
         barostat = ET.Element("barostat", mode=mode)
         tau = ET.Element("tau", units="femtosecond")
-        tau.text = "200"
+        tau.text = " {} ".format(walker.timecons_baro)
         barostat.append(tau)
         if walker.vol_constraint is True:
             vol_constraint = ET.Element("vol_constraint")

@@ -53,6 +53,8 @@ class Walker:
     masses: Union[np.ndarray, float, None]
     nbeads: int
     timestep: float
+    timecons_thermo: float
+    timecons_baro: float
     coupling: Optional[Coupling]
     metadynamics: Optional[Metadynamics]
     order_parameter: Optional[OrderParameter]
@@ -68,6 +70,8 @@ class Walker:
         masses: Union[np.ndarray, float, None] = None,
         nbeads: int = 1,
         timestep: float = 0.5,
+        timecons_thermo: float = 100,
+        timecons_baro: float = 200,
         metadynamics: Optional[Metadynamics] = None,
         order_parameter: Optional[OrderParameter] = None,
     ):
@@ -98,6 +102,8 @@ class Walker:
 
         self.nbeads = nbeads
         self.timestep = timestep
+        self.timecons_thermo = timecons_thermo
+        self.timecons_baro = timecons_baro
 
         self.metadynamics = metadynamics
         self.order_parameter = order_parameter
@@ -128,6 +134,8 @@ class Walker:
                 masses=self.masses,
                 nbeads=self.nbeads,
                 timestep=self.timestep,
+                timecons_thermo=self.timecons_thermo,
+                timecons_baro=self.timecons_baro,
                 metadynamics=metadynamics,
             )  # no coupling
             walkers.append(walker)
