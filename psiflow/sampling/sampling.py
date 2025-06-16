@@ -2,18 +2,18 @@ from __future__ import annotations  # necessary for type-guarding class methods
 
 import math
 import xml.etree.ElementTree as ET
-from typing import Optional, Union
+from typing import Optional, Union, Iterable
+from collections import defaultdict
 
 import parsl
 import typeguard
 from parsl.app.app import bash_app
 from parsl.data_provider.files import File
-from parsl.dataflow.futures import AppFuture
+from parsl.dataflow.futures import AppFuture, DataFuture
 
 import psiflow
 from psiflow.data import Dataset
 from psiflow.hamiltonians import Hamiltonian, MixtureHamiltonian, Zero
-from psiflow.sampling.optimize import setup_sockets
 from psiflow.sampling.output import (
     DEFAULT_OBSERVABLES,
     SimulationOutput,
@@ -21,6 +21,7 @@ from psiflow.sampling.output import (
 )
 from psiflow.sampling.walker import Coupling, Walker, partition
 from psiflow.utils.io import save_xml
+from psiflow.utils import TMP_COMMAND, CD_COMMAND
 
 
 @typeguard.typechecked
@@ -31,23 +32,15 @@ def template(
     total_hamiltonian = 1.0 * sum([w.hamiltonian for w in walkers], start=Zero())
     assert not total_hamiltonian == Zero()
 
-    # create string names for hamiltonians and sort
-    names = []
-    counts = {}
-    for h in total_hamiltonian.hamiltonians:
-        if h.__class__.__name__ not in counts:
-            counts[h.__class__.__name__] = 0
-        count = counts.get(h.__class__.__name__)
-        counts[h.__class__.__name__] += 1
-        names.append(h.__class__.__name__ + str(count))
-    _, hamiltonians = zip(*sorted(zip(names, total_hamiltonian.hamiltonians)))
-    _, coefficients = zip(*sorted(zip(names, total_hamiltonian.coefficients)))
-    hamiltonians = list(hamiltonians)
-    coefficients = list(coefficients)
-    names = sorted(names)
+    # create string names for hamiltonians and sort     TODO: why sort?
+    names = label_forces(total_hamiltonian)
+    names, hamiltonians, coefficients = zip(
+        *sorted(zip(names, total_hamiltonian.hamiltonians, total_hamiltonian.coefficients))
+    )
     assert MixtureHamiltonian(hamiltonians, coefficients) == total_hamiltonian
     total_hamiltonian = MixtureHamiltonian(hamiltonians, coefficients)
 
+    # TODO: take care of ordering in weights_table (names <> total_hamiltonian.hamiltonians)
     weights_header = tuple(names)
     if walkers[0].npt:
         weights_header = ("TEMP", "PRESSURE") + weights_header
@@ -97,6 +90,53 @@ def template(
 
     hamiltonians_map = {n: h for n, h in zip(names, hamiltonians)}
     return hamiltonians_map, weights_table, plumed_list
+
+
+def label_forces(hamiltonian: MixtureHamiltonian) -> list[str]:
+    """Create unique string name for every hamiltonian"""
+    # TODO: move into class?
+    assert isinstance(hamiltonian, MixtureHamiltonian)
+    names, counts = [], defaultdict(lambda: 0)
+    for h in hamiltonian.hamiltonians:
+        name = h.__class__.__name__
+        names.append(f'{name}{counts[name]}')
+        counts[name] += 1
+    return names
+
+
+def make_force_xml(hamiltonian: MixtureHamiltonian, names: list[str]) -> ET.Element:
+    forces = ET.Element("forces")
+    for n, c in zip(names, hamiltonian.coefficients):
+        forces.append(ET.Element("force", forcefield=n, weight=str(c)))
+    return forces
+
+
+def serialize_mixture(hamiltonian: MixtureHamiltonian, **kwargs) -> list[DataFuture]:
+    # TODO: move into class?
+    return [h.serialize_function(**kwargs) for h in hamiltonian.hamiltonians]
+
+
+@typeguard.typechecked
+def setup_sockets(
+    hamiltonian_labels: Iterable[str],
+) -> list[ET.Element]:
+    sockets = []
+    for name in hamiltonian_labels:
+        ffsocket = ET.Element("ffsocket", mode="unix", name=name, pbc="False")
+        timeout = ET.Element("timeout")
+        timeout.text = str(
+            60 * psiflow.context().definitions["ModelEvaluation"].timeout
+        )
+        ffsocket.append(timeout)
+        exit_on = ET.Element("exit_on_disconnect")
+        exit_on.text = " TRUE "
+        ffsocket.append(exit_on)
+        address = ET.Element("address")  # placeholder
+        address.text = name.lower()
+        ffsocket.append(address)
+
+        sockets.append(ffsocket)
+    return sockets
 
 
 @typeguard.typechecked
@@ -249,6 +289,12 @@ def setup_system_template(
         masses.text = str(list(walkers[0].masses * amu)).replace("[", "[ ").replace("]", " ]")  # replace str(list()) with np.array_str()?
         initialize.append(masses)
     initialize.append(velocities)
+    if walkers[0].masses is not None:
+        import ase.units
+        AMU_TO_AU = ase.units._amu / ase.units._me
+        masses = ET.Element("masses", mode="manual")
+        masses.text = str(list(walkers[0].masses * AMU_TO_AU)).replace("[", "[ ").replace("]", " ]")  # replace str(list()) with np.array_str()?
+        initialize.append(masses)
 
     system = ET.Element("system", prefix="walker-INDEX")
     system.append(initialize)
@@ -338,6 +384,20 @@ def setup_smotion(
     return smotion
 
 
+def make_start_command(command: str, input_xml: File, start_xyz: File, nwalkers: int = 1) -> str:
+    """"""
+    return f'{command} --nwalkers={nwalkers} --input_xml={input_xml.filepath} --start_xyz={start_xyz.filepath} &'
+
+
+def make_client_command(command: str, address: str, hamiltonian: File,
+                        start: File, arg: str, max_force: float = None) -> str:
+    """"""
+    return '{c} --address={a} --path_hamiltonian={p} --start={s} {m} {arg} &'.format(
+        c=command, a=address.lower(), p=hamiltonian.filepath, s=start.filepath, arg=arg,
+        m=(f'--max_force={max_force}' if max_force is not None else ''),
+    )
+
+
 def _execute_ipi(
     nwalkers: int,
     hamiltonian_names: list[str],
@@ -355,59 +415,39 @@ def _execute_ipi(
     outputs: list = [],
     parsl_resource_specification: Optional[dict] = {},
 ) -> str:
-    tmp_command = "tmpdir=$(mktemp -d);"
-    cd_command = "cd $tmpdir;"
-    write_command = " "
-    for i, plumed_str in enumerate(plumed_list):
-        write_command += 'echo "{}" > metad_input{}.txt; '.format(plumed_str, i)
-    for key, value in env_vars.items():
-        write_command += " export {}={}; ".format(key, value)
-    command_start = command_server + " --nwalkers={}".format(nwalkers)
-    command_start += " --input_xml={}".format(inputs[0].filepath)
-    command_start += " --start_xyz={}".format(inputs[1].filepath)
-    command_start += "  & \n"
-    command_clients = ""
-    i = 0
+    write_command = '\n'.join([
+        f'echo "{plumed_str}" > metad_input{i}.txt' for i, plumed_str in enumerate(plumed_list)
+    ])
+    env_command = 'export ' + ' '.join([f"{name}={value}" for name, value in env_vars.items()])
+    command_start = make_start_command(command_server, inputs[0], inputs[1], nwalkers)
+    commands_client = []
     for i, name in enumerate(hamiltonian_names):
         args = client_args[i]
-        for _j, arg in enumerate(args):
-            command_ = command_client + " --address={}".format(name.lower())
-            command_ += " --path_hamiltonian={}".format(inputs[2 + i].filepath)
-            command_ += " --start={}".format(inputs[1].filepath)
-            if max_force is not None:
-                command_ += " --max_force={}".format(max_force)
-            command_ += " " + arg + " "
-            command_ += " & \n"
-            command_clients += command_
+        for arg in args:
+            commands_client += make_client_command(command_client, name, inputs[2 + i], inputs[1], arg, max_force),
 
-    command_end = command_server
-    command_end += " --cleanup"
-    command_end += " --output_xyz={};".format(outputs[0].filepath)
-    command_copy = ""
+    command_end = f'{command_server} --cleanup --output_xyz={outputs[0].filepath}'
+    commands_copy = []
     for i in range(nwalkers):
-        command_copy += "cp walker-{}_output.properties {}; ".format(
-            i,
-            outputs[i + 1].filepath,
-        )
-    if keep_trajectory:
-        for i in range(nwalkers):
-            command_copy += "cp walker-{}_output.trajectory_0.extxyz {}; ".format(
-                i,
-                outputs[i + nwalkers + 1].filepath,
-            )
+        commands_copy += f'cp walker-{i}_output.properties {outputs[i + 1].filepath}',
+        if keep_trajectory:
+            commands_copy += f'cp walker-{i}_output.trajectory_0.extxyz {outputs[i + nwalkers + 1].filepath}',
     if coupling_command is not None:
-        command_copy += coupling_command
+        commands_copy += coupling_command,
+    command_copy = '; '.join(commands_copy)
+
     command_list = [
-        tmp_command,
-        cd_command,
+        TMP_COMMAND,
+        CD_COMMAND,
         write_command,
+        env_command,
         command_start,
-        command_clients,
-        "wait;",
+        *commands_client,
+        "wait",
         command_end,
         command_copy,
     ]
-    return " ".join(command_list)
+    return "\n".join(command_list)
 
 
 execute_ipi = bash_app(_execute_ipi, executors=["ModelEvaluation"])
@@ -473,7 +513,7 @@ def _sample(
         verbosity=str(verbosity),
         safe_stride=str(checkpoint_step),
     )
-    sockets = setup_sockets(hamiltonians_map)
+    sockets = setup_sockets(hamiltonians_map.keys())
     for socket in sockets:
         simulation.append(socket)
     ffplumed = setup_ffplumed(len(plumed_list))
