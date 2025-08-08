@@ -184,6 +184,7 @@ class MACEFunction(EnergyFunction):
     device: str
     dtype: str
     atomic_energies: dict[str, float]
+    head: Optional[str] = None
     env_vars: Optional[dict[str, str]] = None
 
     def __post_init__(self):
@@ -212,10 +213,34 @@ class MACEFunction(EnergyFunction):
         model = model.to(self.device)
         model.eval()
         self.model = model
+        print(type(self.model))
         self.r_max = float(self.model.r_max)
         self.z_table = utils.AtomicNumberTable(
             [int(z) for z in self.model.atomic_numbers]
         )
+        try:
+            self.available_heads = self.model.heads
+        except AttributeError:
+            self.available_heads = ["Default"]
+
+        if self.head is not None:
+            if self.head not in self.available_heads:
+                raise ValueError(f"Head {self.head} not available. Available heads: {self.available_heads}")
+        else:
+            self.heads = [
+                head for head in self.available_heads if head.lower() == "default"
+            ]
+            if len(self.heads) == 0:
+                self.head = self.available_heads[0]
+                warnings.warn(
+                    "WARNING: Head keyword was not provided, and no head in the model is 'default'. "
+                    "Please provide a head keyword to specify the head you want to use. "
+                    f"Available heads are: {self.available_heads}"
+                )
+            else:
+                self.head = self.heads[0]
+        
+        print("Using head", self.head, "out of", self.available_heads)
 
         # remove unwanted streamhandler added by MACE / torch!
         logging.getLogger("").removeHandler(logging.getLogger("").handlers[0])
@@ -254,8 +279,8 @@ class MACEFunction(EnergyFunction):
             cell=cell,
             pbc=geometry.periodic,
         )
-        config = data.config_from_atoms(atoms)
-        data = data.AtomicData.from_config(config, z_table=self.z_table, cutoff=self.r_max)
+        config = data.config_from_atoms(atoms, head_name=self.head)
+        data = data.AtomicData.from_config(config, z_table=self.z_table, cutoff=self.r_max, heads=self.available_heads)
         batch = Batch.from_data_list([data]).to(device=self.device)
         out = self.model(batch.to_dict(), compute_stress=cell is not None)
         energy += out["energy"].detach().cpu().item()

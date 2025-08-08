@@ -249,7 +249,7 @@ class MACE(Model):
     def seed(self, arg: int) -> None:
         self._config["seed"] = arg
 
-    def create_hamiltonian(self) -> MACEHamiltonian:
+    def create_hamiltonian(self, head=None) -> MACEHamiltonian:
         assert self.model_future is not None
 
         # wait for atomic energy calculations if necessary:
@@ -257,4 +257,4 @@ class MACE(Model):
             value = self.atomic_energies[element]
             if isinstance(value, AppFuture):
                 self.atomic_energies[element] = value.result()
-        return MACEHamiltonian(self.model_future, self.atomic_energies)
+        return MACEHamiltonian(self.model_future, self.atomic_energies, head)
