@@ -96,11 +96,11 @@ def wait_for_clients(input_xml, timeout: int = 60) -> None:
 
 def add_extras(noutputs: int) -> None:
     # property headers
-    file_props = next(Path.cwd().glob("*0*.properties"))   # properties should be the same for all coupled walkers?
+    file_props = next(Path.cwd().glob("*0*.properties"))
     _, info_dict = read_output(file_props)
     props_headers = ["# column   {}     --> {}{} : {}".format(i, key, "{" + info_dict[key][0] + "}", info_dict[key][1]) for i, key in enumerate(info_dict)]
     # extras headers
-    file_extras = next(Path.cwd().glob("*0*.extras*"))   # extras should be the same for all coupled walkers?
+    file_extras = next(Path.cwd().glob("*0*.extras*"))
     with open(file_extras, "r") as f:
         line = f.readline()
         start = line.find("(") + 1
@@ -111,16 +111,13 @@ def add_extras(noutputs: int) -> None:
     for idx in range(noutputs):
         file_props = next(Path.cwd().glob(f"*{idx}*.properties"))
         file_extras = next(Path.cwd().glob(f"*{idx}*.extras*"))
-        np.savetxt(file_props, np.hstack((np.loadtxt(file_props), np.loadtxt(file_extras))), fmt='%10.8e', delimiter='     ', header="\n".join(props_headers) + "\n" + "\n".join(extras_headers), comments="")
-        # granted i-Pi properties file has some weird indentations so the files do not perfectly match
-        # but output parser still works so who cares
+        np.savetxt(file_props, np.hstack((np.loadtxt(file_props, ndmin=2), np.loadtxt(file_extras, ndmin=2))), fmt='%10.8e', delimiter='     ', header="\n".join(props_headers) + "\n" + "\n".join(extras_headers), comments="")
 
 
 def run(start_xyz: str, input_xml: str):
     # prepare starting geometries from context_dir
     data_start: list[ase.Atoms] = read(start_xyz, index=":")
     for i, at in enumerate(data_start):
-        print(at.pbc)   # TODO: why print?
         if not any(at.pbc):  # set fake large cell for i-PI
             at.pbc = True
             at.cell = Cell(NONPERIODIC_CELL)

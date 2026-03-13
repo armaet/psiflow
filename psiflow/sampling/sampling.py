@@ -322,7 +322,7 @@ def setup_output(
         trajectory = ET.Element(
             "trajectory",
             filename="trajectory",
-            stride=str(step),   # TODO: separate stride for trajectory and properties?
+            stride=str(step),   # TODO: separate stride for trajectory and properties
             format="ase",
             bead="0",
         )
@@ -337,9 +337,9 @@ def setup_output(
     output.append(properties)
     extras_list = []
     for comp in components:
-        if comp.name.startswith("Plumed"):  # technically other hamiltonians could also have extras
-            extras_list += comp.hamiltonian.plumed_extras    # maybe extras should be a general property of the Hamiltonian class?
-    observables += [extra + "{au}" for extra in extras_list]   # for SimulationOutput  TODO: what to do with units?
+        if comp.name.startswith("Plumed"):
+            extras_list += comp.hamiltonian.plumed_extras    # TODO: make extras a general property of the Hamiltonian class
+    observables += [extra + "{au}" for extra in extras_list]
     if extras_list:
         extras = ",".join(list(set(extras_list)))
         extras_element = ET.Element(
